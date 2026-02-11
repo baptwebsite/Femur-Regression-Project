@@ -1,0 +1,12 @@
+2026-01-24 09:30:58,071 - Model - INFO - PARAMETER ...
+2026-01-24 09:30:58,073 - Model - INFO - Namespace(use_cpu=False, gpu='0', batch_size=24, num_point=2048, model='pointnet2_reg', log_dir='2026-01-24_02-24', use_normals=False, num_votes=3)
+2026-01-24 09:30:58,074 - Model - INFO - Load dataset ...
+2026-01-24 09:30:58,291 - Model - INFO - Start Evaluation...
+2026-01-24 09:32:02,243 - Model - INFO - 
+==============================
+2026-01-24 09:32:02,253 - Model - INFO - --- RÉSULTATS FINAUX (TEST) ---
+2026-01-24 09:32:02,255 - Model - INFO - MAE (Erreur Moyenne Absolue): 0.1267 m
+2026-01-24 09:32:02,255 - Model - INFO - MAE en Centimètres: 12.67 cm
+2026-01-24 09:32:02,255 - Model - INFO - RMSE (Racine de l'erreur quadratique): 0.1460 m
+2026-01-24 09:32:02,255 - Model - INFO - R² Score (Coefficient de détermination): -2.0690
+2026-01-24 09:32:02,256 - Model - INFO - ==============================
