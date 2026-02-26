@@ -54,129 +54,156 @@ def main(args):
     
     # 4. Variables de suivi 
     best_val_mae = 1e10
-    history = {'train_loss': [], 'val_mae': []}
+    history = {
+    'train_mse': [], 'val_mse': [],
+    'train_mae': [], 'val_mae': []}
 
     # Paramètres de normalisation (Doivent être identiques à ceux du DataLoader)
     MEAN_SIZE = 1.70
     STD_SIZE = 0.1
 
+   # Initialisation de l'historique étendu
+    history = {
+        'train_mse': [], 'val_mse': [],
+        'train_mae_cm': [], 'val_mae_cm': []
+    }
+
     for epoch in range(args.epoch):
-        # PHASE ENTRAÎNEMENT
+        # --- PHASE ENTRAÎNEMENT ---
         classifier.train()
-        train_loss_epoch = []
+        epoch_train_mse = []
+        epoch_train_mae_cm = []
+        
         for points, target in tqdm(trainDataLoader, total=len(trainDataLoader), desc=f"Epoch {epoch+1}/{args.epoch}"):
             optimizer.zero_grad()
             points, target = points.to(device).transpose(2, 1), target.to(device)
             
             pred, trans_feat = classifier(points)
             
-            # Le critère calcule la distance sur les valeurs normalisées (ex: entre 0.2 et 0.5)
+            # 1. MSE Loss (sur valeurs normalisées) pour le backprop
             loss = criterion(pred.view(-1), target.float(), trans_feat)
             loss.backward()
             optimizer.step()
-            train_loss_epoch.append(loss.item())
+            
+            # 2. Calcul du MAE en cm pour le suivi
+            with torch.no_grad():
+                pred_cm = (pred.view(-1) * train_dataset.std_target) # Erreur relative * std = erreur en cm
+                target_cm = (target.view(-1) * train_dataset.std_target)
+                mae_cm = torch.abs(pred_cm - target_cm).mean()
+            
+            epoch_train_mse.append(loss.item())
+            epoch_train_mae_cm.append(mae_cm.item())
         
-        avg_train_loss = np.mean(train_loss_epoch)
-        history['train_loss'].append(avg_train_loss)
+        # Stockage moyennes Train
+        history['train_mse'].append(np.mean(epoch_train_mse))
+        history['train_mae_cm'].append(np.mean(epoch_train_mae_cm))
 
-        # PHASE VALIDATION
+        # --- PHASE VALIDATION ---
         classifier.eval()
-        val_errors_cm = [] # On stocke les erreurs en CM
+        epoch_val_mse = []
+        epoch_val_mae_cm = []
+        
         with torch.no_grad():
             for points, target in valDataLoader:
                 points, target = points.to(device).transpose(2, 1), target.to(device)
-                pred, _ = classifier(points)
+                pred, trans_feat = classifier(points)
                 
-                # --- INVERSION DE LA NORMALISATION ---
-                # On repasse les prédictions et les cibles en mètres pour calculer la MAE réelle
-                pred_m = (pred.view(-1) * STD_SIZE) + MEAN_SIZE
-                target_m = (target.view(-1) * STD_SIZE) + MEAN_SIZE
+                # MSE de validation
+                v_loss = criterion(pred.view(-1), target.float(), trans_feat)
                 
-                # Calcul de l'erreur absolue en centimètres
-                e_cm = torch.abs(pred_m - target_m) * 100
-                val_errors_cm.extend(e_cm.cpu().numpy())
+                # MAE de validation en cm
+                pred_cm = (pred.view(-1) * train_dataset.std_target)
+                target_cm = (target.view(-1) * train_dataset.std_target)
+                v_mae_cm = torch.abs(pred_cm - target_cm).mean()
+                
+                epoch_val_mse.append(v_loss.item())
+                epoch_val_mae_cm.append(v_mae_cm.item())
         
-        avg_val_mae_cm = np.mean(val_errors_cm)
-        # On stocke la MAE en mètres (pour la cohérence du best_val_mae)
-        history['val_mae'].append(avg_val_mae_cm / 100)
-        
-        print(f'Epoch {epoch+1}: Loss: {avg_train_loss:.6f}, Val MAE: {avg_val_mae_cm:.2f}cm')
+        # Stockage moyennes Val
+        avg_val_mae = np.mean(epoch_val_mae_cm)
+        history['val_mse'].append(np.mean(epoch_val_mse))
+        history['val_mae_cm'].append(avg_val_mae)
 
-        # Sauvegarde si amélioration de la MAE (en cm ou m, le résultat est le même)
-        if (avg_val_mae_cm / 100) < best_val_mae:
-            best_val_mae = (avg_val_mae_cm / 100)
+        print(f'Epoch {epoch+1}: Train MSE: {history["train_mse"][-1]:.6f}, Val MAE: {avg_val_mae:.2f}cm')
+
+        # Sauvegarde du meilleur modèle basé sur le MAE de validation
+        if (avg_val_mae / 100) < best_val_mae:
+            best_val_mae = (avg_val_mae / 100)
             torch.save({'model_state_dict': classifier.state_dict(), 'epoch': epoch}, 
-                    str(checkpoints_dir) + '/best_model.pth')
-            print("--- Modèle sauvegardé (Meilleure MAE Val) ---")
+                        str(checkpoints_dir) + '/best_model.pth')
+            print(f"--- Modèle sauvegardé ({avg_val_mae:.2f}cm) ---")
 
-    # # 5. ÉVALUATION FINALE SUR LE TEST SET
-    # print("Entraînement terminé. Évaluation finale sur le Test Set...")
-    # checkpoint = torch.load(str(checkpoints_dir) + '/best_model.pth')
-    # classifier.load_state_dict(checkpoint['model_state_dict'])
-    # classifier.eval()
-    # test_errors = []
-    # with torch.no_grad():
-    #     for points, target in testDataLoader:
-    #         points, target = points.to(device).transpose(2, 1), target.to(device)
-    #         pred, _ = classifier(points)
-    #         test_errors.extend(torch.abs(pred.view(-1) - target.view(-1)).cpu().numpy())
-    
-    # print(f'RÉSULTAT TEST FINAL -> MAE: {np.mean(test_errors)*100:.2f}cm')
-
-    # 5. ÉVALUATION FINALE SUR LE TEST SET
-    print("Entraînement terminé. Évaluation finale sur le Test Set...")
+    # --- ÉVALUATION FINALE SUR LE TEST SET ---
+    print("Entraînement terminé. Évaluation finale...")
     checkpoint = torch.load(str(checkpoints_dir) + '/best_model.pth')
     classifier.load_state_dict(checkpoint['model_state_dict'])
     classifier.eval()
     
-    # On récupère les paramètres de normalisation calculés par le dataset
-    # (Assure-toi que ton train_dataset est toujours accessible ici)
-    mu = train_dataset.mean_target
-    std = train_dataset.std_target
-    
-    test_errors_normalized = []
-    
+    test_errors_cm = []
     with torch.no_grad():
         for points, target in testDataLoader:
             points, target = points.to(device).transpose(2, 1), target.to(device)
             pred, _ = classifier(points)
-            
-            # On stocke l'erreur normalisée
-            error_norm = torch.abs(pred.view(-1) - target.view(-1))
-            test_errors_normalized.extend(error_norm.cpu().numpy())
-    
-    # CALCUL DE LA VRAIE MAE :
-    # Erreur réelle = Erreur_normalisée * Écart-type
-    mae_norm = np.mean(test_errors_normalized)
-    mae_reelle_cm = mae_norm * std
+            # Conversion directe en cm via l'écart-type
+            err_cm = torch.abs(pred.view(-1) - target.view(-1)) * train_dataset.std_target
+            test_errors_cm.extend(err_cm.cpu().numpy())
     
     print(f'--- BILAN FINAL ---')
-    print(f'MAE Normalisée : {mae_norm:.4f}')
-    print(f'RÉSULTAT TEST FINAL -> MAE RÉELLE : {mae_reelle_cm:.2f} cm')
-    
-    # 6. GÉNÉRATION DES GRAPHES
-    plt.figure(figsize=(12, 5))
-    
-    # Graphe de la perte
-    plt.subplot(1, 2, 1)
-    plt.plot(history['train_loss'], label='Train MSE Loss')
-    plt.title('Perte d\'entraînement')
+    print(f'RÉSULTAT TEST FINAL -> MAE RÉELLE : {np.mean(test_errors_cm):.2f} cm')
+
+    # --- 6. GÉNÉRATION DES GRAPHES (MSE et MAE séparés) ---
+    # Plot 1 : MSE (Train vs Val)
+    plt.figure(figsize=(8, 6))
+    plt.plot(history['train_mse'], label='Train MSE', color='blue')
+    plt.plot(history['val_mse'], label='Val MSE', color='orange', linewidth=2)
+    plt.title('Évolution de la Perte MSE (Normalisée)')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(str(exp_dir) + '/plot_mse_loss.png')
+    plt.close()
 
-    # Graphe de la MAE
-    plt.subplot(1, 2, 2)
-    plt.plot([x * 100 for x in history['val_mae']], label='Val MAE (cm)', color='orange')
-    plt.title('Précision (Validation)')
+    # Plot 2 : MAE (Train vs Val)
+    plt.figure(figsize=(8, 6))
+    plt.plot(history['train_mae_cm'], label='Train MAE (cm)', color='blue')
+    plt.plot(history['val_mae_cm'], label='Val MAE (cm)', color='orange', linewidth=2)
+    plt.title('Évolution de l\'Erreur MAE (en cm)')
     plt.xlabel('Epochs')
     plt.ylabel('Erreur (cm)')
     plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(str(exp_dir) + '/plot_mae_precision.png')
+    plt.close()
+    
+    print(f"Graphiques sauvegardés dans {exp_dir}/")
 
-    plt.tight_layout()
-    plt.savefig(str(exp_dir) + '/history_plot.png')
-    print(f"Graphes sauvegardés dans {exp_dir}/history_plot.png")
+    # --- SAUVEGARDE DES HYPERPARAMÈTRES et RESULTATS ---
+    config_file = str(exp_dir) + '/parameters_results.txt'
+    with open(config_file, 'w') as f:
+        f.write('--- HYPERPARAMÈTRES DE L\'ENTRAÎNEMENT ---\n')
+        f.write(f'Date : {str(datetime.datetime.now())}\n')
+        f.write(f'Modèle : {args.model}\n')
+        f.write(f'Batch Size : {args.batch_size}\n')
+        f.write(f'Points : {args.num_point}\n')
+        f.write(f'Epochs : {args.epoch}\n')
+        f.write(f'Learning Rate : {args.learning_rate}\n')
+        f.write(f'Optimizer : {args.optimizer}\n')
+ 
+        f.write(f'\n--- RÉSULTATS FINAUX ---\n')
+        f.write(f'Best Validation MAE (m) : {best_val_mae:.6f}\n')
+        f.write(f'Best Validation MAE (cm) : {best_val_mae * 100:.2f} cm\n')
+        f.write(f'Final Test MAE (cm) : {np.mean(test_errors_cm):.2f} cm\n')
+        f.write(f'Entraînement terminé à : {str(datetime.datetime.now())}\n')
+
+        print(f"Paramètres sauvegardés dans {config_file}")
 
 if __name__ == '__main__':
     args = parse_args()
     main(args)
+
+
+
+
+
+

@@ -1,6 +1,3 @@
-import torch.nn as nn
-import torch.nn.functional as F
-from pointnet2_utils import PointNetSetAbstractionMsg, PointNetSetAbstraction
 
 # class get_model(nn.Module):
 #     def __init__(self, normal_channel=True): # EDIT : remove num_class since we only looking for one feature
