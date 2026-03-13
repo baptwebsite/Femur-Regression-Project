@@ -1,0 +1,12 @@
+# Configuration par défaut pour la régression de fémur
+model:
+  name: pointnet2_reg
+  num_point: 2048
+
+training:
+  batch_size: 16
+  epoch: 50
+  learning_rate: 0.001
+  optimizer: Adam
+  process_data: true
+  use_cpu: false

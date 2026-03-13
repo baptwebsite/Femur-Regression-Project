@@ -151,10 +151,11 @@ def main(args):
     print(f'--- BILAN FINAL ---')
     print(f'RÉSULTAT TEST FINAL -> MAE RÉELLE : {np.mean(test_errors_cm):.2f} cm')
 
-    # --- 6. GÉNÉRATION DES GRAPHES (MSE et MAE séparés) ---
+    # 6. GÉNÉRATION DES GRAPHES (MSE et MAE séparés)
+    
     # Plot 1 : MSE (Train vs Val)
     plt.figure(figsize=(8, 6))
-    plt.plot(history['train_mse'], label='Train MSE', color='blue')
+    plt.plot(history['train_mse'], label='Train MSE', color='blue', alpha=0.6)
     plt.plot(history['val_mse'], label='Val MSE', color='orange', linewidth=2)
     plt.title('Évolution de la Perte MSE (Normalisée)')
     plt.xlabel('Epochs')
@@ -166,9 +167,19 @@ def main(args):
 
     # Plot 2 : MAE (Train vs Val)
     plt.figure(figsize=(8, 6))
-    plt.plot(history['train_mae_cm'], label='Train MAE (cm)', color='blue')
+    plt.plot(history['train_mae_cm'], label='Train MAE (cm)', color='blue', alpha=0.6)
     plt.plot(history['val_mae_cm'], label='Val MAE (cm)', color='orange', linewidth=2)
-    plt.title('Évolution de l\'Erreur MAE (en cm)')
+    
+    # --- AJOUT : Annotation du meilleur score ---
+    best_mae_cm = best_val_mae * 100
+    best_epoch = np.argmin(history['val_mae_cm']) # Trouve l'index du meilleur score
+    plt.annotate(f'Best: {best_mae_cm:.2f}cm', 
+                 xy=(best_epoch, best_mae_cm), 
+                 xytext=(best_epoch, best_mae_cm + 1),
+                 arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
+                 horizontalalignment='center')
+
+    plt.title(f'Évolution de l\'Erreur MAE (Best: {best_mae_cm:.2f} cm)')
     plt.xlabel('Epochs')
     plt.ylabel('Erreur (cm)')
     plt.legend()
@@ -192,12 +203,12 @@ def main(args):
  
         f.write(f'\n--- RÉSULTATS FINAUX ---\n')
         f.write(f'Best Validation MAE (m) : {best_val_mae:.6f}\n')
-        f.write(f'Best Validation MAE (cm) : {best_val_mae * 100:.2f} cm\n')
+        f.write(f'Best Validation MAE (cm) : {best_mae_cm:.2f} cm\n')
+        # On s'assure que test_errors_cm est bien une liste ou array numpy
         f.write(f'Final Test MAE (cm) : {np.mean(test_errors_cm):.2f} cm\n')
         f.write(f'Entraînement terminé à : {str(datetime.datetime.now())}\n')
 
-        print(f"Paramètres sauvegardés dans {config_file}")
-
+    print(f"Paramètres et résultats sauvegardés dans {config_file}")
 if __name__ == '__main__':
     args = parse_args()
     main(args)
