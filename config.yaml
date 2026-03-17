@@ -2,6 +2,17 @@
 model:
   name: pointnet2_reg
   num_point: 2048
+  normal_channel: false
+  # Paramètres de l'architecture
+  sa_config:
+    npoints: [512, 128]
+    radii: 
+      layer1: [10.0, 20.0, 40.0]
+      layer2: [20.0, 40.0, 80.0]
+    mlps:
+      layer1: [[32, 32, 64], [64, 64, 128], [64, 96, 128]]
+      layer2: [[64, 64, 128], [128, 128, 256], [128, 128, 256]]
+  dropout: [0.4, 0.5]
 
 training:
   batch_size: 16

@@ -24,14 +24,14 @@ parser.add_argument("-c", "--config", help="Base config", required=True)
 parser.add_argument("-p", "--parameters", metavar=('p', 'v'), action='append', nargs=2, default=[])
 args = parser.parse_args()
 
-# 1. Charger et modifier config
+# Charger et modifier config
 with open(args.config, 'r') as f:
     cfg = yaml.safe_load(f)
 
 for param, val in args.parameters:
     set_parameter_value(cfg, param, val)
 
-# 2. Créer dossier de Job dans un dossier 'Jobs' au même niveau
+# Créer dossier de Job dans un dossier 'Jobs' au même niveau
 job_root = join(script_dir, "Jobs")
 os.makedirs(job_root, exist_ok=True)
 job_id = len(os.listdir(job_root)) + 1
@@ -41,7 +41,7 @@ os.makedirs(job_path, exist_ok=True)
 with open(join(job_path, "config.yaml"), 'w') as f:
     yaml.dump(cfg, f)
 
-# 3. Fichier Slurm
+# Fichier Slurm
 slurm_script = join(job_path, "job.slurm")
 container_image = join(script_dir, "pytorch_25.09-py3.sif")
 
