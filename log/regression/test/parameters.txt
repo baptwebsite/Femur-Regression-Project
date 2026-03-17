@@ -1,9 +1,0 @@
---- HYPERPARAMÈTRES DE L'ENTRAÎNEMENT ---
-Date : 2026-02-25 12:00:34.835725
-Modèle : pointnet2_reg
-Batch Size : 4
-Points : 1024
-Epochs : 3
-Learning Rate : 0.001
-Optimizer : Adam
-Device : GPU

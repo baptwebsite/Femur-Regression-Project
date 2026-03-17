@@ -1,0 +1,10 @@
+# Modèles et fichiers lourds
+*.pth
+*.sif
+
+# Python
+__pycache__/
+*.pyc
+
+
+

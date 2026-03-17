@@ -1,0 +1,10 @@
+--- CONFIGURATION ET RÉSULTATS ---
+Date : 2026-03-17 21:54:58.337430
+Modèle : pointnet2_reg | Points : 2048
+Batch Size : 64 | Epochs : 1000
+Learning Rate : 0.001 | Optimizer : Adam
+
+--- RÉSULTATS ---
+Best Validation MAE (m) : 0.031144 m
+Best Validation MAE (cm) : 3.11 cm
+Final Test MAE (cm) : 3.71 cm
