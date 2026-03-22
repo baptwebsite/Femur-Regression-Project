@@ -149,5 +149,3 @@ class FemurDataLoader(Dataset):
         
         return point_set, target_scaled
     
-    def __getitem__(self, index):
-        return self._get_item(index)
