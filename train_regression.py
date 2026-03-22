@@ -26,6 +26,7 @@ def parse_args():
     return parser.parse_args()
 
 def main(args):
+    
     # 1. Création des dossiers de log
     timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
     exp_dir = Path('./log/regression/').joinpath(args.log_dir if args.log_dir else timestr)
@@ -143,7 +144,7 @@ def main(args):
 
     print(f'--- BILAN FINAL ---')
     print(f'Meilleure Validation MAE : {best_val_mae_cm:.2f} cm')
-    print(f'Test Final MAE           : {final_test_mae_cm:.2f} cm')
+    print(f'Test Final MAE (moyenne des erreurs) : {final_test_mae_cm:.2f} cm')
     
     # 6. GÉNÉRATION DES GRAPHES
     best_mae_cm = best_val_mae_m * 100
@@ -179,15 +180,18 @@ def main(args):
     # --- SAUVEGARDE DES RESULTATS ---
     config_file = str(exp_dir) + '/parameters_results.txt'
     with open(config_file, 'w') as f:
-        f.write('--- CONFIGURATION ET RÉSULTATS ---\n')
+        f.write('--- CONFIGURATION ---\n')
         f.write(f'Date : {str(datetime.datetime.now())}\n')
-        f.write(f'Modèle : {args.model} | Points : {args.num_point}\n')
-        f.write(f'Batch Size : {args.batch_size} | Epochs : {args.epoch}\n')
-        f.write(f'Learning Rate : {args.learning_rate} | Optimizer : {args.optimizer}\n\n')
+        f.write(f'Modèle : {args.model}\n')
+        f.write(f'Points : {args.num_point}\n')
+        f.write(f'Batch Size : {args.batch_size}\n')
+        f.write(f'Epochs : {args.epoch}\n')
+        f.write(f'Learning Rate : {args.learning_rate}\n')
+        f.write(f'Optimizer : {args.optimizer}\n\n')
         f.write(f'--- RÉSULTATS ---\n')
         f.write(f'Best Validation MAE (m) : {best_val_mae_m:.6f} m\n')
         f.write(f'Best Validation MAE (cm) : {best_mae_cm:.2f} cm\n')
-        f.write(f'Final Test MAE (cm) : {final_test_mae_cm:.2f} cm\n')
+        f.write(f'Final Test MAE (moyenne des erreurs) : {final_test_mae_cm:.2f} cm\n')
     
     print(f"Entraînement terminé. Résultats dans {config_file}")
 

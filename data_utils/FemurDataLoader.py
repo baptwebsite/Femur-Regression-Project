@@ -4,21 +4,16 @@ import warnings
 import pickle
 import json
 from tqdm import tqdm
+from collections import defaultdict
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings('ignore')
 
 def pc_normalize(pc):
-    """
-    Normalisation pour la régression :
-    On centre le nuage de points sur son centroïde, mais on NE divise PAS par 
-    le rayon max pour conserver l'échelle absolue du fémur.
-    """
+    """ Centre le nuage de points sur son centroïde. """
     centroid = np.mean(pc, axis=0)
     pc = pc - centroid
-    # m = np.max(np.sqrt(np.sum(pc**2, axis=1))) # Supprimé pour garder l'échelle
-    # pc = pc / m 
     return pc
 
 def farthest_point_sample(point, npoint):
@@ -42,40 +37,68 @@ class FemurDataLoader(Dataset):
         self.root = root 
         self.npoints = npoint
         self.process_data = process_data
+        
+        # Paramètres de normalisation de la cible
+        self.mean_target = 1.70
+        self.std_target = 0.1
 
-        
-        
-        # 1. Chargement du JSON
-        json_path = os.path.join(self.root, 'dataset_PatientSize.json')
+        # 1. Chargement du JSON 
+        json_path = os.path.join(self.root, 'dataset_PatientSize_augmented.json')
         with open(json_path, 'r') as f:
             all_data = json.load(f)
 
-        # 2. Split ternaire (Train: 70%, Val: 15%, Test: 15%)
-        # On sépare d'abord le Test (15%)
-        train_val_data, test_data = train_test_split(all_data, test_size=0.15, random_state=42)
-        # On sépare le Train et le Val (0.18 * 0.85 ≈ 0.15 du total)
-        train_data, val_data = train_test_split(train_val_data, test_size=0.18, random_state=42)
-
-        if split == 'train':
-            self.datapath = train_data
-        elif split == 'val':
-            self.datapath = val_data
-        else:
-            self.datapath = test_data
+        # 2. LOGIQUE DE SPLIT (Groupement par ID Racine)
+        groups = defaultdict(list)
+        for item in all_data:
+            # On extrait l'ID de base : meshes\40000037_m_50_aug1.obj -> 40000037_m_50
+            filename = os.path.basename(item['obj_path'])
+            root_id = filename.split('_aug')[0].replace('.obj', '')
+            groups[root_id].append(item)
         
-        print('The size of %s data is %d' % (split, len(self.datapath)))
+        # On split sur les IDs uniques (les patients réels)
+        unique_root_ids = sorted(list(groups.keys()))
+        
+        # --- CONFIGURATION 80 / 10 / 10 ---
+        
+        # 1. On isole 10% pour le Test (reste 90% pour Train+Val)
+        train_val_ids, test_ids = train_test_split(
+            unique_root_ids, 
+            test_size=0.10, 
+            random_state=42
+        )
+        
+        # 2. On veut que Val représente 10% du TOTAL.
+        # Comme il reste 90% des données, on prend 1/9ème de ce reste :
+        # 0.10 / 0.90 ≈ 0.1111
+        train_ids, val_ids = train_test_split(
+            train_val_ids, 
+            test_size=0.1111, 
+            random_state=42
+        )
 
-        # Nom du cache spécifique au split pour éviter les erreurs de chargement
-        self.save_path = os.path.join(root, 'femur_%s_%dpts.dat' % (split, self.npoints))
+        # Attribution des données selon le split demandé
+        if split == 'train':
+            selected_ids = train_ids
+        elif split == 'val':
+            selected_ids = val_ids
+        else:
+            selected_ids = test_ids
+            
+        self.datapath = [entry for rid in selected_ids for entry in groups[rid]]
+        
+        print(f'--- Split {split} ---')
+        print(f'Nombre de patients uniques : {len(selected_ids)}')
+        print(f'Nombre total de maillages (avec augmentations) : {len(self.datapath)}')
+
+        # Gestion du cache
+        self.save_path = os.path.join(root, f'femur_{split}_{self.npoints}pts.dat')
         
         if self.process_data:
             if not os.path.exists(self.save_path):
-                self.list_of_points = [None] * len(self.datapath)
-                self.list_of_labels = [None] * len(self.datapath)
+                self.list_of_points = []
+                self.list_of_labels = []
 
-                for index in tqdm(range(len(self.datapath)), total=len(self.datapath)):
-                    item = self.datapath[index]
-                    # Gestion des chemins Windows/Linux
+                for item in tqdm(self.datapath, desc=f"Processing {split}"):
                     rel_path = item['obj_path'].replace('\\', os.sep)
                     obj_path = os.path.join(self.root, rel_path)
                     
@@ -85,20 +108,15 @@ class FemurDataLoader(Dataset):
                     # Sous-échantillonnage FPS
                     point_set = farthest_point_sample(point_set, self.npoints)
 
-                    self.list_of_points[index] = point_set
-                    self.list_of_labels[index] = label
+                    self.list_of_points.append(point_set)
+                    self.list_of_labels.append(label)
 
                 with open(self.save_path, 'wb') as f:
                     pickle.dump([self.list_of_points, self.list_of_labels], f)
             else:
-                print('Load processed data from %s...' % self.save_path)
+                print(f'Load processed data from {self.save_path}...')
                 with open(self.save_path, 'rb') as f:
                     self.list_of_points, self.list_of_labels = pickle.load(f)
-
-
-        self.mean_target = 1.70
-        self.std_target = 0.1
-
 
     def load_obj(self, path):
         vertices = []
@@ -111,7 +129,7 @@ class FemurDataLoader(Dataset):
     def __len__(self):
         return len(self.datapath)
 
-    def _get_item(self, index):
+    def __getitem__(self, index):
         if self.process_data:
             point_set, label = self.list_of_points[index], self.list_of_labels[index]
         else:
@@ -122,17 +140,14 @@ class FemurDataLoader(Dataset):
             label = np.array([item['PatientSize']]).astype(np.float32)
             point_set = farthest_point_sample(point_set, self.npoints)
         
-        # Normalisation (Centrage uniquement)
+        # Normalisation spatiale
         point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
 
-        # --- AJOUT : Normalisation de la Cible (Target Scaling) ---
-        # On centre sur 1.70m et on divise par 0.1 pour amplifier les écarts
+        # Normalisation de la cible (Standard Scaling)
         target = label[0]
         target_scaled = (target - self.mean_target) / self.std_target
-        # ----------------------------------------------------------
         
-        # Retourne le nuage de points et la taille (normalisé).
         return point_set, target_scaled
-
+    
     def __getitem__(self, index):
         return self._get_item(index)

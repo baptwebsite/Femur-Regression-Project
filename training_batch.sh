@@ -1,18 +1,13 @@
 #!/bin/bash
 
 # Listes des paramètres à tester
-LRS=(0.001)
-BSS=(16 32 64)
-NPTS=(1024 2048)
-
-# LRS=(0.001 0.0001 0.00001)
-# BSS=(16 32 64 128 256)
-# NPTS=(1024 2048 4096)
+LRS=(0.001 0.0001 0.00001)
+BSS=(16 32 64 128 256)
+NPTS=(1024 2048 4096)
 
 # METTRE À "true" POUR SIMULER, "false" POUR LANCER VRAIMENT
 SIMULATION=false
 
-# --- BOUCLES ---
 for lr in "${LRS[@]}"; do
     for bs in "${BSS[@]}"; do
         for np in "${NPTS[@]}"; do
@@ -26,7 +21,7 @@ for lr in "${LRS[@]}"; do
                 echo "[SIMULATION] $CMD"
             else
                 echo "[EXECUTION] Lancement de $LOG_NAME..."
-                $CMD  # Ici la commande est réellement exécutée
+                $CMD  
                 sleep 1
             fi
 
