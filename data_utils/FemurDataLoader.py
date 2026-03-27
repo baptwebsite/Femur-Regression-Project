@@ -11,9 +11,14 @@ from sklearn.model_selection import train_test_split
 warnings.filterwarnings('ignore')
 
 def pc_normalize(pc):
-    """ Centre le nuage de points sur son centroïde. """
+    """
+    Centre le nuage de points et le ramène dans une sphère de rayon 1.
+    """
     centroid = np.mean(pc, axis=0)
     pc = pc - centroid
+    # Calcul de la distance la plus lointaine pour normaliser l'échelle
+    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+    pc = pc / m
     return pc
 
 def farthest_point_sample(point, npoint):
@@ -140,12 +145,11 @@ class FemurDataLoader(Dataset):
             label = np.array([item['PatientSize']]).astype(np.float32)
             point_set = farthest_point_sample(point_set, self.npoints)
         
-        # Normalisation spatiale
+        # 1. Normalization of points
         point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
 
-        # Normalisation de la cible (Standard Scaling)
+        # 2. Normalization of target
         target = label[0]
         target_scaled = (target - self.mean_target) / self.std_target
         
         return point_set, target_scaled
-    
