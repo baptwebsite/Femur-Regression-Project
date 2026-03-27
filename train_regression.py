@@ -69,13 +69,15 @@ def main(args):
         epoch_train_mse = []
         epoch_train_mae_cm = []
         
-        for points, target in tqdm(trainDataLoader, total=len(trainDataLoader), desc=f"Epoch {epoch+1}/{args.epoch}"):
+        # CORRECTION : Ajout de 'scale' pour correspondre au nouveau DataLoader
+        for points, target, scale in tqdm(trainDataLoader, total=len(trainDataLoader), desc=f"Epoch {epoch+1}/{args.epoch}"):
             optimizer.zero_grad()
-            points, target = points.to(device).transpose(2, 1), target.to(device)
-            pred, trans_feat = classifier(points)
+            # CORRECTION : Passage de scale au device et au modèle
+            points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
+            pred, trans_feat = classifier(points, scale)
             
             # MSE Loss sur valeurs normalisées
-            loss = criterion(pred.view(-1), target.float(), trans_feat)
+            loss = criterion(pred.view(-1), target.float().view(-1), trans_feat)
             loss.backward()
             optimizer.step()
             
@@ -96,11 +98,12 @@ def main(args):
         epoch_val_mae_m = [] # On stocke en mètres pour la logique de sauvegarde
         
         with torch.no_grad():
-            for points, target in valDataLoader:
-                points, target = points.to(device).transpose(2, 1), target.to(device)
-                pred, trans_feat = classifier(points)
+            # CORRECTION : Ajout de 'scale'
+            for points, target, scale in valDataLoader:
+                points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
+                pred, trans_feat = classifier(points, scale)
                 
-                v_loss = criterion(pred.view(-1), target.float(), trans_feat)
+                v_loss = criterion(pred.view(-1), target.float().view(-1), trans_feat)
                 # Erreur en mètres
                 v_mae_m = (torch.abs(pred.view(-1) - target.view(-1)).mean() * std_val)
                 
@@ -127,12 +130,12 @@ def main(args):
     classifier.eval()
     
     test_errors_m = []
-    std_val = train_dataset.std_target # On récupère l'écart-type pour dénormaliser
     
     with torch.no_grad():
-        for points, target in testDataLoader:
-            points, target = points.to(device).transpose(2, 1), target.to(device)
-            pred, _ = classifier(points)
+        # CORRECTION : Ajout de 'scale'
+        for points, target, scale in testDataLoader:
+            points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
+            pred, _ = classifier(points, scale)
             
             # Calcul de l'erreur brute en mètres (pred et target sont normalisés)
             err_m = torch.abs(pred.view(-1) - target.view(-1)) * std_val
@@ -140,7 +143,7 @@ def main(args):
     
     final_test_mae_m = np.mean(test_errors_m)
     final_test_mae_cm = final_test_mae_m * 100
-    best_val_mae_cm = best_val_mae_m * 100 # best_val_mae_m a été sauvé pendant la boucle
+    best_val_mae_cm = best_val_mae_m * 100 
 
     print(f'--- BILAN FINAL ---')
     print(f'Meilleure Validation MAE : {best_val_mae_cm:.2f} cm')
@@ -166,10 +169,10 @@ def main(args):
     
     best_epoch = np.argmin(history['val_mae_cm'])
     plt.annotate(f'Best: {best_mae_cm:.2f}cm', 
-                 xy=(best_epoch, best_mae_cm), 
-                 xytext=(best_epoch, best_mae_cm + 2),
-                 arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                 horizontalalignment='center')
+                  xy=(best_epoch, best_mae_cm), 
+                  xytext=(best_epoch, best_mae_cm + 2),
+                  arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
+                  horizontalalignment='center')
 
     plt.title(f'Évolution de l\'Erreur MAE (Best: {best_mae_cm:.2f} cm)')
     plt.xlabel('Epochs') ; plt.ylabel('Erreur (cm)')
