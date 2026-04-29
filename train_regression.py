@@ -53,14 +53,13 @@ def main(args):
     criterion = model_mod.get_loss().to(device)
     optimizer = torch.optim.Adam(classifier.parameters(), lr=args.learning_rate)
     
-    # 4. Variables de suivi (Tout est géré en METRES en interne)
+    # 4. Variables de suivi
     best_val_mae_m = 1e10
     history = {
         'train_mse': [], 'val_mse': [],
         'train_mae_cm': [], 'val_mae_cm': []
     }
 
-    # Récupération de l'écart-type pour la dénormalisation
     std_val = train_dataset.std_target
 
     for epoch in range(args.epoch):
@@ -121,39 +120,38 @@ def main(args):
     classifier.load_state_dict(checkpoint['model_state_dict'])
     classifier.eval()
     
-    test_errors_cm_list = [] # Stockage des erreurs pour le calcul final et top 10
-    test_results_paths = [] # Stockage des chemins correspondants
+    test_errors_cm_list = [] 
+    test_results_paths = [] 
     
     with torch.no_grad():
         for i, (points, target, scale) in enumerate(tqdm(testDataLoader, desc="Final Testing")):
             points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
             pred, _ = classifier(points, scale)
             
-            # Erreurs individuelles en cm
+            # Calcul des erreurs individuelles sur le meilleur modèle
             err_cm = torch.abs(pred.view(-1) - target.view(-1)) * std_val * 100
             err_cm_np = err_cm.cpu().numpy()
             
             test_errors_cm_list.extend(err_cm_np.tolist())
             
-            # Récupération des chemins (nécessite shuffle=False dans le DataLoader)
             batch_start = i * args.batch_size
             for j in range(len(err_cm_np)):
                 idx = batch_start + j
                 if idx < len(test_dataset.datapath):
                     test_results_paths.append(test_dataset.datapath[idx]['obj_path'])
     
-    # Calcul du bilan final
     final_test_mae_cm = np.mean(test_errors_cm_list)
     best_val_mae_cm = best_val_mae_m * 100 
 
-    # --- TOP 10 ERREURS ---
-    # On zippe erreurs et chemins, puis on trie par erreur décroissante
+    # --- TOP 10 ERREURS (Sur le meilleur modèle convergé) ---
     sorted_errors = sorted(zip(test_errors_cm_list, test_results_paths), key=lambda x: x[0], reverse=True)
     top_10 = sorted_errors[:10]
 
     error_log_file = str(exp_dir) + '/top_10_errors.txt'
     with open(error_log_file, 'w') as f:
-        f.write("--- TOP 10 DES PLUS GRANDES ERREURS ---\n")
+        f.write("--- TOP 10 DES PLUS GRANDES ERREURS (MEILLEUR MODELE) ---\n")
+        f.write(f"Nombre total d'échantillons test : {len(test_errors_cm_list)}\n")
+        f.write("-" * 50 + "\n")
         for rank, (err, path) in enumerate(top_10):
             f.write(f"#{rank+1}: {err:.4f} cm | Mesh: {path}\n")
 
@@ -162,7 +160,7 @@ def main(args):
     print(f'Test Final MAE : {final_test_mae_cm:.2f} cm')
     print(f"Top 10 sauvegardé dans : {error_log_file}")
     
-    # 6. GÉNÉRATION DES GRAPHES (Le reste de ton code original)
+    # 6. GÉNÉRATION DES GRAPHES
     best_mae_cm = best_val_mae_m * 100
     plt.figure(figsize=(8, 6))
     plt.plot(history['train_mse'], label='Train MSE', color='blue', alpha=0.6)
