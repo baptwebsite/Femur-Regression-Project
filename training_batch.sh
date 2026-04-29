@@ -15,7 +15,7 @@ for lr in "${LRS[@]}"; do
             LOG_NAME="LR${lr}_BS${bs}_NP${np}"
             
             # On construit la commande dans une variable
-            CMD="python submit.py -c config.yaml -p learning_rate $lr -p batch_size $bs -p num_point $np -p epoch 500 -g"
+            CMD="python submit.py -c config.yaml -p learning_rate $lr -p batch_size $bs -p num_point $np -p epoch 300 -g"
 
             if [ "$SIMULATION" = true ] ; then
                 echo "[SIMULATION] $CMD"
