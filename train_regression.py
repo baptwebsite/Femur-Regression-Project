@@ -69,21 +69,16 @@ def main(args):
         epoch_train_mse = []
         epoch_train_mae_cm = []
         
-        # CORRECTION : Ajout de 'scale' pour correspondre au nouveau DataLoader
         for points, target, scale in tqdm(trainDataLoader, total=len(trainDataLoader), desc=f"Epoch {epoch+1}/{args.epoch}"):
             optimizer.zero_grad()
-            # CORRECTION : Passage de scale au device et au modèle
             points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
             pred, trans_feat = classifier(points, scale)
             
-            # MSE Loss sur valeurs normalisées
             loss = criterion(pred.view(-1), target.float().view(-1), trans_feat)
             loss.backward()
             optimizer.step()
             
-            # MAE en cm pour le suivi historique
             with torch.no_grad():
-                # (pred - target) * std = erreur en mètres -> * 100 = cm
                 mae_cm = (torch.abs(pred.view(-1) - target.view(-1)).mean() * std_val * 100)
             
             epoch_train_mse.append(loss.item())
@@ -95,16 +90,14 @@ def main(args):
         # --- PHASE VALIDATION ---
         classifier.eval()
         epoch_val_mse = []
-        epoch_val_mae_m = [] # On stocke en mètres pour la logique de sauvegarde
+        epoch_val_mae_m = [] 
         
         with torch.no_grad():
-            # CORRECTION : Ajout de 'scale'
             for points, target, scale in valDataLoader:
                 points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
                 pred, trans_feat = classifier(points, scale)
                 
                 v_loss = criterion(pred.view(-1), target.float().view(-1), trans_feat)
-                # Erreur en mètres
                 v_mae_m = (torch.abs(pred.view(-1) - target.view(-1)).mean() * std_val)
                 
                 epoch_val_mse.append(v_loss.item())
@@ -116,7 +109,6 @@ def main(args):
 
         print(f'Epoch {epoch+1}: Train MSE: {history["train_mse"][-1]:.6f}, Val MAE: {avg_val_mae_m*100:.2f}cm')
 
-        # Sauvegarde du meilleur modèle (Logique cohérente en mètres)
         if avg_val_mae_m < best_val_mae_m:
             best_val_mae_m = avg_val_mae_m
             torch.save({'model_state_dict': classifier.state_dict(), 'epoch': epoch}, 
@@ -129,30 +121,49 @@ def main(args):
     classifier.load_state_dict(checkpoint['model_state_dict'])
     classifier.eval()
     
-    test_errors_m = []
+    test_errors_cm_list = [] # Stockage des erreurs pour le calcul final et top 10
+    test_results_paths = [] # Stockage des chemins correspondants
     
     with torch.no_grad():
-        # CORRECTION : Ajout de 'scale'
-        for points, target, scale in testDataLoader:
+        for i, (points, target, scale) in enumerate(tqdm(testDataLoader, desc="Final Testing")):
             points, target, scale = points.to(device).transpose(2, 1), target.to(device), scale.to(device)
             pred, _ = classifier(points, scale)
             
-            # Calcul de l'erreur brute en mètres (pred et target sont normalisés)
-            err_m = torch.abs(pred.view(-1) - target.view(-1)) * std_val
-            test_errors_m.extend(err_m.cpu().numpy().tolist())
+            # Erreurs individuelles en cm
+            err_cm = torch.abs(pred.view(-1) - target.view(-1)) * std_val * 100
+            err_cm_np = err_cm.cpu().numpy()
+            
+            test_errors_cm_list.extend(err_cm_np.tolist())
+            
+            # Récupération des chemins (nécessite shuffle=False dans le DataLoader)
+            batch_start = i * args.batch_size
+            for j in range(len(err_cm_np)):
+                idx = batch_start + j
+                if idx < len(test_dataset.datapath):
+                    test_results_paths.append(test_dataset.datapath[idx]['obj_path'])
     
-    final_test_mae_m = np.mean(test_errors_m)
-    final_test_mae_cm = final_test_mae_m * 100
+    # Calcul du bilan final
+    final_test_mae_cm = np.mean(test_errors_cm_list)
     best_val_mae_cm = best_val_mae_m * 100 
+
+    # --- TOP 10 ERREURS ---
+    # On zippe erreurs et chemins, puis on trie par erreur décroissante
+    sorted_errors = sorted(zip(test_errors_cm_list, test_results_paths), key=lambda x: x[0], reverse=True)
+    top_10 = sorted_errors[:10]
+
+    error_log_file = str(exp_dir) + '/top_10_errors.txt'
+    with open(error_log_file, 'w') as f:
+        f.write("--- TOP 10 DES PLUS GRANDES ERREURS ---\n")
+        for rank, (err, path) in enumerate(top_10):
+            f.write(f"#{rank+1}: {err:.4f} cm | Mesh: {path}\n")
 
     print(f'--- BILAN FINAL ---')
     print(f'Meilleure Validation MAE : {best_val_mae_cm:.2f} cm')
-    print(f'Test Final MAE (moyenne des erreurs) : {final_test_mae_cm:.2f} cm')
+    print(f'Test Final MAE : {final_test_mae_cm:.2f} cm')
+    print(f"Top 10 sauvegardé dans : {error_log_file}")
     
-    # 6. GÉNÉRATION DES GRAPHES
+    # 6. GÉNÉRATION DES GRAPHES (Le reste de ton code original)
     best_mae_cm = best_val_mae_m * 100
-
-    # Plot 1 : MSE
     plt.figure(figsize=(8, 6))
     plt.plot(history['train_mse'], label='Train MSE', color='blue', alpha=0.6)
     plt.plot(history['val_mse'], label='Val MSE', color='orange', linewidth=2)
@@ -162,25 +173,18 @@ def main(args):
     plt.savefig(str(exp_dir) + '/plot_mse_loss.png')
     plt.close()
 
-    # Plot 2 : MAE
     plt.figure(figsize=(8, 6))
     plt.plot(history['train_mae_cm'], label='Train MAE (cm)', color='blue', alpha=0.6)
     plt.plot(history['val_mae_cm'], label='Val MAE (cm)', color='orange', linewidth=2)
-    
     best_epoch = np.argmin(history['val_mae_cm'])
-    plt.annotate(f'Best: {best_mae_cm:.2f}cm', 
-                  xy=(best_epoch, best_mae_cm), 
-                  xytext=(best_epoch, best_mae_cm + 2),
-                  arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                  horizontalalignment='center')
-
+    plt.annotate(f'Best: {best_mae_cm:.2f}cm', xy=(best_epoch, best_mae_cm), xytext=(best_epoch, best_mae_cm + 2),
+                 arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), horizontalalignment='center')
     plt.title(f'Évolution de l\'Erreur MAE (Best: {best_mae_cm:.2f} cm)')
     plt.xlabel('Epochs') ; plt.ylabel('Erreur (cm)')
     plt.legend() ; plt.grid(True, alpha=0.3)
     plt.savefig(str(exp_dir) + '/plot_mae_precision.png')
     plt.close()
     
-    # --- SAUVEGARDE DES RESULTATS ---
     config_file = str(exp_dir) + '/parameters_results.txt'
     with open(config_file, 'w') as f:
         f.write('--- CONFIGURATION ---\n')

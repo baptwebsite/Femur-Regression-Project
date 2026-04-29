@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Listes des paramètres à tester
-LRS=(0.001 0.0001 0.00001)
-BSS=(16 32 64 128 256)
-NPTS=(1024 2048 4096)
+LRS=(0.001 0.0001 )
+BSS=(64 128 256)
+NPTS=(2048 4096)
 
 # METTRE À "true" POUR SIMULER, "false" POUR LANCER VRAIMENT
 SIMULATION=false
@@ -15,7 +15,7 @@ for lr in "${LRS[@]}"; do
             LOG_NAME="LR${lr}_BS${bs}_NP${np}"
             
             # On construit la commande dans une variable
-            CMD="python submit.py -c config.yaml -p learning_rate $lr -p batch_size $bs -p num_point $np -p epoch 1000 -g"
+            CMD="python submit.py -c config.yaml -p learning_rate $lr -p batch_size $bs -p num_point $np -p epoch 500 -g"
 
             if [ "$SIMULATION" = true ] ; then
                 echo "[SIMULATION] $CMD"
