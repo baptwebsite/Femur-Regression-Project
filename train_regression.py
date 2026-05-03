@@ -143,22 +143,22 @@ def main(args):
     final_test_mae_cm = np.mean(test_errors_cm_list)
     best_val_mae_cm = best_val_mae_m * 100 
 
-    # --- TOP 10 ERREURS (Sur le meilleur modèle convergé) ---
+    # --- TOP 30 ERREURS (Sur le meilleur modèle convergé) ---
     sorted_errors = sorted(zip(test_errors_cm_list, test_results_paths), key=lambda x: x[0], reverse=True)
-    top_10 = sorted_errors[:10]
+    top_30 = sorted_errors[:30]
 
-    error_log_file = str(exp_dir) + '/top_10_errors.txt'
+    error_log_file = str(exp_dir) + '/top_errors.txt'
     with open(error_log_file, 'w') as f:
-        f.write("--- TOP 10 DES PLUS GRANDES ERREURS (MEILLEUR MODELE) ---\n")
+        f.write("--- TOP 30 DES PLUS GRANDES ERREURS (MEILLEUR MODELE) ---\n")
         f.write(f"Nombre total d'échantillons test : {len(test_errors_cm_list)}\n")
         f.write("-" * 50 + "\n")
-        for rank, (err, path) in enumerate(top_10):
+        for rank, (err, path) in enumerate(top_30):
             f.write(f"#{rank+1}: {err:.4f} cm | Mesh: {path}\n")
 
     print(f'--- BILAN FINAL ---')
     print(f'Meilleure Validation MAE : {best_val_mae_cm:.2f} cm')
     print(f'Test Final MAE : {final_test_mae_cm:.2f} cm')
-    print(f"Top 10 sauvegardé dans : {error_log_file}")
+    print(f"Top 30 sauvegardé dans : {error_log_file}")
     
     # 6. GÉNÉRATION DES GRAPHES
     best_mae_cm = best_val_mae_m * 100
