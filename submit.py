@@ -63,7 +63,7 @@ with open(slurm_script, 'w') as f:
     # Commande Apptainer
     # On monte le dossier courant dans le conteneur et on lance l'entraînement
     cmd = (
-        f"apptainer exec --nv {container_image} python {join(script_dir, 'train_regression.py')} "
+        f"apptainer exec --nv {container_image} python {join(script_dir, 'train_regression_random.py')} "
         f"--model {cfg['model']['name']} "
         f"--batch_size {cfg['training']['batch_size']} "
         f"--epoch {cfg['training']['epoch']} "
