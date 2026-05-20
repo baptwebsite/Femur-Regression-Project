@@ -6,6 +6,7 @@ import datetime
 import logging
 import importlib
 import argparse
+import csv  # Ajouté pour l'écriture du fichier CSV
 import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
@@ -121,7 +122,7 @@ def main(args):
             print(f"--- Modèle sauvegardé ({best_val_mae_m*100:.2f}cm) ---")
 
             
-    # --- ÉVALUATION FINALE ---
+    # --- ÉVALUATION FINALE MODIFIÉE (SAUVEGARDE CSV ET SUPPRESSION DU TOP 30) ---
     print("Entraînement terminé. Évaluation finale sur le Test Set...")
     checkpoint = torch.load(str(checkpoints_dir) + '/best_model.pth')
     classifier.load_state_dict(checkpoint['model_state_dict'])
@@ -150,22 +151,27 @@ def main(args):
     final_test_mae_cm = np.mean(test_errors_cm_list)
     best_val_mae_cm = best_val_mae_m * 100 
 
-    # --- TOP 30 ERREURS (Sur le meilleur modèle convergé) ---
+    # Tri de toutes les erreurs de l'évaluation du plus grand au plus petit
     sorted_errors = sorted(zip(test_errors_cm_list, test_results_paths), key=lambda x: x[0], reverse=True)
-    top_30 = sorted_errors[:30]
-
-    error_log_file = str(exp_dir) + '/top_errors.txt'
-    with open(error_log_file, 'w') as f:
-        f.write("--- TOP 30 DES PLUS GRANDES ERREURS (MEILLEUR MODELE) ---\n")
-        f.write(f"Nombre total d'échantillons test : {len(test_errors_cm_list)}\n")
-        f.write("-" * 50 + "\n")
-        for rank, (err, path) in enumerate(top_30):
-            f.write(f"#{rank+1}: {err:.4f} cm | Mesh: {path}\n")
+    
+    # Écriture directe de toutes les erreurs dans un fichier CSV
+    csv_log_file = str(exp_dir) + '/all_test_errors.csv'
+    with open(csv_log_file, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['Rank', 'Absolute_Error_cm', 'Mesh_Path']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for rank, (err, path) in enumerate(sorted_errors):
+            writer.writerow({
+                'Rank': rank + 1,
+                'Absolute_Error_cm': f"{err:.4f}",
+                'Mesh_Path': path
+            })
 
     print(f'--- BILAN FINAL ---')
     print(f'Meilleure Validation MAE : {best_val_mae_cm:.2f} cm')
     print(f'Test Final MAE : {final_test_mae_cm:.2f} cm')
-    print(f"Top 30 sauvegardé dans : {error_log_file}")
+    print(f"L'intégralité des erreurs ({len(test_errors_cm_list)}) a été enregistrée dans : {csv_log_file}")
     
     # 6. GÉNÉRATION DES GRAPHES
     best_mae_cm = best_val_mae_m * 100

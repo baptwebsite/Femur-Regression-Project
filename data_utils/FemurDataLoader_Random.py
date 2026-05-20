@@ -101,13 +101,17 @@ class FemurDataLoader(Dataset):
         full_point_set = self.load_obj(obj_path)
         label = np.array([item['PatientSize']]).astype(np.float32)
 
-        # 2. Échantillonnage ALÉATOIRE DYNAMIQUE
-        # On pioche npoints au hasard à chaque appel (chaque epoch)
+        # 2. Échantillonnage ALÉATOIRE SANS REMPLACEMENT (replace=False)
         num_vertices = full_point_set.shape[0]
+        
+        # Sécurité dynamique : si le fémur a moins de points que npoints, on autorise replace=True
+        # sinon np.random.choice crashera au milieu d'une epoch.
+        should_replace = (num_vertices < self.npoints)
+        
         selected_indices = np.random.choice(
             num_vertices, 
             self.npoints, 
-            replace=(num_vertices < self.npoints)
+            replace=should_replace
         )
         point_set = full_point_set[selected_indices, :]
         
