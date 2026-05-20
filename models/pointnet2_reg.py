@@ -25,21 +25,37 @@ class get_model(nn.Module):
         #     320,
         #     [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
         
+        # self.sa1 = PointNetSetAbstractionMsg(
+        #     512, 
+        #     [0.02, 0.05, 0.1],      # Rayons réduits
+        #     [16, 32, 48],           
+        #     in_channel,
+        #     [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
+
+        # # SA2 : Regroupement intermédiaire
+        # self.sa2 = PointNetSetAbstractionMsg(
+        #     128, 
+        #     [0.1, 0.2, 0.4],        # Rayons réduits 
+        #     [32, 48, 64],           
+        #     320,
+        #     [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
+        
+        # SA1
         self.sa1 = PointNetSetAbstractionMsg(
             512, 
-            [0.02, 0.05, 0.1],      # Rayons réduits
-            [16, 32, 48],           
+            [0.05, 0.15, 0.3],      # Tuilage progressif
+            [16, 32, 64], 
             in_channel,
             [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
 
-        # SA2 : Regroupement intermédiaire
+        # SA2
         self.sa2 = PointNetSetAbstractionMsg(
             128, 
-            [0.1, 0.2, 0.4],        # Rayons réduits 
-            [32, 48, 64],           
+            [0.25, 0.45, 0.65],    
+            [32, 64, 128], 
             320,
             [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
-        
+
         # SA3
         self.sa3 = PointNetSetAbstraction(None, None, None, 640 + 3, [256, 512, 1024], True)
         
