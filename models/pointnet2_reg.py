@@ -9,19 +9,34 @@ class get_model(nn.Module):
         in_channel = 3 if normal_channel else 0
         self.normal_channel = normal_channel
         
-        # SA1
+        # # SA1
+        # self.sa1 = PointNetSetAbstractionMsg(
+        #     512, 
+        #     [0.05, 0.1, 0.2], 
+        #     [16, 32, 64], 
+        #     in_channel,
+        #     [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
+        
+        # # SA2
+        # self.sa2 = PointNetSetAbstractionMsg(
+        #     128, 
+        #     [0.2, 0.4, 0.8], 
+        #     [32, 64, 128], 
+        #     320,
+        #     [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
+        
         self.sa1 = PointNetSetAbstractionMsg(
             512, 
-            [0.05, 0.1, 0.2], 
-            [16, 32, 64], 
+            [0.02, 0.05, 0.1],      # Rayons réduits
+            [16, 32, 48],           
             in_channel,
             [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
-        
-        # SA2
+
+        # SA2 : Regroupement intermédiaire
         self.sa2 = PointNetSetAbstractionMsg(
             128, 
-            [0.2, 0.4, 0.8], 
-            [32, 64, 128], 
+            [0.1, 0.2, 0.4],        # Rayons réduits 
+            [32, 48, 64],           
             320,
             [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
         
