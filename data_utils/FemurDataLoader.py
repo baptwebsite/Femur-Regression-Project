@@ -1,10 +1,8 @@
 import os
 import numpy as np
 import warnings
-import pickle
 import json
 import torch
-from tqdm import tqdm
 from collections import defaultdict
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
@@ -14,13 +12,11 @@ warnings.filterwarnings('ignore')
 def pc_normalize(pc):
     """
     Centre le nuage de points et le ramène dans une sphère de rayon 1.
-    Retourne le nuage normalisé et le facteur d'échelle original.
+    Retourne le nuage normalisé et le facteur d'échelle original (m).
     """
     centroid = np.mean(pc, axis=0)
     pc = pc - centroid
-    # Calcul de la distance la plus lointaine (norme L2 max)
     m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
-    # Éviter la division par zéro au cas où
     if m > 0:
         pc = pc / m
     return pc, m
@@ -30,7 +26,7 @@ def farthest_point_sample(point, npoint):
     Échantillonnage par points les plus éloignés (FPS).
     """
     N, D = point.shape
-    xyz = point[:,:3]
+    xyz = point[:, :3]
     centroids = np.zeros((npoint,))
     distance = np.ones((N,)) * 1e10
     farthest = np.random.randint(0, N)
@@ -45,13 +41,16 @@ def farthest_point_sample(point, npoint):
     return point
 
 class FemurDataLoader(Dataset):
-    def __init__(self, root, npoint=2048, split='train', process_data=False):
+    def __init__(self, root, npoint=2048, split='train', sampling_method='random', augment=False):
         self.root = root 
         self.npoints = npoint
-        self.process_data = process_data
         self.split = split
+        self.sampling_method = sampling_method.lower()
         
-        # Paramètres de normalisation de la cible (moyenne et std du PatientSize)
+        # L'augmentation par fichiers physiques ne s'applique que sur le train set
+        self.augment = augment if split == 'train' else False
+        
+        # Paramètres de normalisation de la cible (PatientSize)
         self.mean_target = 1.70
         self.std_target = 0.1
 
@@ -83,16 +82,31 @@ class FemurDataLoader(Dataset):
             random_state=42
         )
 
-        # 3. Sélection des données selon le split
+        # 3. Sélection et filtrage des données selon le split et l'argument augment
         if split == 'train':
             selected_ids = train_ids
-            self.datapath = [entry for rid in selected_ids for entry in groups[rid]]
+            if not self.augment:
+                # Exclure les données augmentées si augment=False
+                self.datapath = [
+                    entry for rid in selected_ids 
+                    for entry in groups[rid] 
+                    if '_aug' not in entry['obj_path']
+                ]
+            else:
+                # Inclure tout (base + augmentés) si augment=True
+                self.datapath = [entry for rid in selected_ids for entry in groups[rid]]
+                
         elif split == 'val':
             selected_ids = val_ids
-            self.datapath = [entry for rid in selected_ids for entry in groups[rid]]
+            # Mode validation : on exclut toujours les données augmentées pour garder des métriques réelles
+            self.datapath = [
+                entry for rid in selected_ids 
+                for entry in groups[rid] 
+                if '_aug' not in entry['obj_path']
+            ]
         else:
-            # Pour le TEST : On exclut strictement les données augmentées
             selected_ids = test_ids
+            # Mode test : On exclut strictement les données augmentées
             self.datapath = [
                 entry for rid in selected_ids 
                 for entry in groups[rid] 
@@ -100,36 +114,10 @@ class FemurDataLoader(Dataset):
             ]
             
         print(f'--- Initialisation Dataset Femur [{split}] ---')
+        print(f'Mode d\'échantillonnage : {self.sampling_method.upper()}')
+        print(f'Utilisation de l\'augmentation (_aug) : {self.augment}')
         print(f'Nombre de patients uniques : {len(selected_ids)}')
-        print(f'Nombre de maillages chargés : {len(self.datapath)}')
-
-        # 4. Gestion du cache (Fichier .dat)
-        self.save_path = os.path.join(root, f'femur_{split}_{self.npoints}pts_v2.dat')
-        
-        if self.process_data:
-            if not os.path.exists(self.save_path):
-                self.list_of_points = []
-                self.list_of_labels = []
-
-                for item in tqdm(self.datapath, desc=f"Preprocessing {split}"):
-                    rel_path = item['obj_path'].replace('\\', os.sep)
-                    obj_path = os.path.join(self.root, rel_path)
-                    
-                    point_set = self.load_obj(obj_path)
-                    label = np.array([item['PatientSize']]).astype(np.float32)
-                    
-                    # Sous-échantillonnage FPS au préalable pour le cache
-                    point_set = farthest_point_sample(point_set, self.npoints)
-
-                    self.list_of_points.append(point_set)
-                    self.list_of_labels.append(label)
-
-                with open(self.save_path, 'wb') as f:
-                    pickle.dump([self.list_of_points, self.list_of_labels], f)
-            else:
-                print(f'Chargement des données pré-traitées depuis {self.save_path}...')
-                with open(self.save_path, 'rb') as f:
-                    self.list_of_points, self.list_of_labels = pickle.load(f)
+        print(f'Nombre de maillages : {len(self.datapath)}')
 
     def load_obj(self, path):
         """ Charge les sommets d'un fichier .obj """
@@ -140,31 +128,45 @@ class FemurDataLoader(Dataset):
                     vertices.append([float(x) for x in line.split()[1:4]])
         return np.array(vertices).astype(np.float32)
 
+    def _sample_points(self, full_point_set):
+        """ Applique dynamiquement la méthode d'échantillonnage configurée """
+        num_vertices = full_point_set.shape[0]
+        
+        if self.sampling_method == 'fps':
+            return farthest_point_sample(full_point_set, self.npoints)
+        else:
+            # Mode 'random' par défaut sans remplacement (avec sécurité dynamique)
+            should_replace = (num_vertices < self.npoints)
+            selected_indices = np.random.choice(
+                num_vertices, 
+                self.npoints, 
+                replace=should_replace
+            )
+            return full_point_set[selected_indices, :]
+
     def __len__(self):
         return len(self.datapath)
 
     def __getitem__(self, index):
-        # Récupération des données brutes
-        if self.process_data:
-            point_set, label = self.list_of_points[index], self.list_of_labels[index]
-        else:
-            item = self.datapath[index]
-            rel_path = item['obj_path'].replace('\\', os.sep)
-            obj_path = os.path.join(self.root, rel_path)
-            point_set = self.load_obj(obj_path)
-            label = np.array([item['PatientSize']]).astype(np.float32)
-            point_set = farthest_point_sample(point_set, self.npoints)
+        # Lecture directe à la volée depuis le disque
+        item = self.datapath[index]
+        rel_path = item['obj_path'].replace('\\', os.sep)
+        obj_path = os.path.join(self.root, rel_path)
         
-        # 1. Normalisation spatiale complète
-        # point_set_norm est dans une sphère de rayon 1, m est l'échelle originale
+        full_point_set = self.load_obj(obj_path)
+        label = np.array([item['PatientSize']]).astype(np.float32)
+        
+        # Échantillonnage dynamique (recalculé à chaque itération/epoch si mode random)
+        point_set = self._sample_points(full_point_set)
+        
+        # 1. Normalisation spatiale XYZ
         point_set_norm, m = pc_normalize(point_set[:, 0:3])
 
-        # 2. Normalisation de la cible (Regression Target)
+        # 2. Normalisation de la cible
         target = label[0]
-        target_scaled = (target - self.mean_target) / self.std_target
+        target_scaled = np.array((target - self.mean_target) / self.std_target).astype(np.float32)
         
-        # 3. Retourne (Points, Cible, Facteur d'échelle)
-        # On convertit m en tableau numpy pour que le DataLoader le gère en batch
+        # 3. Facteur d'échelle original emballé pour PyTorch
         scale_factor = np.array([m]).astype(np.float32)
         
         return point_set_norm, target_scaled, scale_factor

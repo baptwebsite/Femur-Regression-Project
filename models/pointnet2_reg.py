@@ -4,73 +4,70 @@ import torch.nn.functional as F
 from .pointnet2_utils import PointNetSetAbstractionMsg, PointNetSetAbstraction
 
 class get_model(nn.Module):
-    def __init__(self, normal_channel=False):
+    def __init__(self, cfg):
+        """
+        Initialise le modèle PointNet++ Regression entièrement à partir du dictionnaire de configuration YAML.
+        cfg: correspond à la section 'model' du fichier YAML.
+        """
         super(get_model, self).__init__()
-        in_channel = 3 if normal_channel else 0
-        self.normal_channel = normal_channel
         
-        # # SA1
-        # self.sa1 = PointNetSetAbstractionMsg(
-        #     512, 
-        #     [0.05, 0.1, 0.2], 
-        #     [16, 32, 64], 
-        #     in_channel,
-        #     [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
+        # 1. Configuration des canaux d'entrée
+        self.normal_channel = cfg.get('normal_channel', False)
+        in_channel = 3 if self.normal_channel else 0
         
-        # # SA2
-        # self.sa2 = PointNetSetAbstractionMsg(
-        #     128, 
-        #     [0.2, 0.4, 0.8], 
-        #     [32, 64, 128], 
-        #     320,
-        #     [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
-        
-        # self.sa1 = PointNetSetAbstractionMsg(
-        #     512, 
-        #     [0.02, 0.05, 0.1],      # Rayons réduits
-        #     [16, 32, 48],           
-        #     in_channel,
-        #     [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
-
-        # # SA2 : Regroupement intermédiaire
-        # self.sa2 = PointNetSetAbstractionMsg(
-        #     128, 
-        #     [0.1, 0.2, 0.4],        # Rayons réduits 
-        #     [32, 48, 64],           
-        #     320,
-        #     [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
-        
-        # SA1
+        # 2. Couche SA1 (Abstraction locale multi-échelle 1)
         self.sa1 = PointNetSetAbstractionMsg(
-            512, 
-            [0.05, 0.15, 0.3],      # Tuilage progressif
-            [16, 32, 64], 
+            cfg['sa1']['npoint'], 
+            cfg['sa1']['radii'], 
+            cfg['sa1']['nsample'], 
             in_channel,
-            [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
-
-        # SA2
+            cfg['sa1']['mlp']
+        )
+        
+        # Calcul dynamique du canal d'entrée de SA2 (somme des derniers filtres de chaque MLP de SA1)
+        sa2_in_channel = sum([mlp_branches[-1] for mlp_branches in cfg['sa1']['mlp']])
+        
+        # 3. Couche SA2 (Abstraction locale multi-échelle 2)
         self.sa2 = PointNetSetAbstractionMsg(
-            128, 
-            [0.25, 0.45, 0.65],    
-            [32, 64, 128], 
-            320,
-            [[64, 64, 128], [128, 128, 256], [128, 128, 256]])
+            cfg['sa2']['npoint'], 
+            cfg['sa2']['radii'], 
+            cfg['sa2']['nsample'], 
+            sa2_in_channel,
+            cfg['sa2']['mlp']
+        )
+        
+        # Calcul dynamique du canal d'entrée de SA3 (dernier filtre du dernier bloc MLP de SA2 + 3 pour XYZ)
+        sa3_in_channel = sum([mlp_branches[-1] for mlp_branches in cfg['sa2']['mlp']]) + 3
+        
+        # 4. Couche SA3 (Abstraction globale)
+        self.sa3 = PointNetSetAbstraction(
+            npoint=None, 
+            radius=None, 
+            nsample=None, 
+            in_channel=sa3_in_channel, 
+            mlp=cfg['sa3']['mlp'], 
+            group_all=True
+        )
+        
+        # 5. Tête de Régression Linéaire Évolutive
+        # La sortie globale de SA3 correspond au dernier élément de sa liste MLP, auquel on ajoute +1 pour le scale_factor
+        final_feature_dim = cfg['sa3']['mlp'][-1]
+        fc1_input_dim = final_feature_dim + 1 
+        
+        # Récupération des hyperparamètres de la tête depuis le YAML
+        reg_cfg = cfg['regression_head']
+        
+        self.fc1 = nn.Linear(fc1_input_dim, reg_cfg['fc1_units'])
+        self.bn1 = nn.BatchNorm1d(reg_cfg['fc1_units'])
+        self.drop1 = nn.Dropout(reg_cfg['dropout_1'])
+        
+        self.fc2 = nn.Linear(reg_cfg['fc1_units'], reg_cfg['fc2_units'])
+        self.bn2 = nn.BatchNorm1d(reg_cfg['fc2_units'])
+        self.drop2 = nn.Dropout(reg_cfg['dropout_2'])
+        
+        # Couche finale de sortie (toujours 1 pour la régression scalaire de PatientSize)
+        self.fc3 = nn.Linear(reg_cfg['fc2_units'], 1) 
 
-        # SA3
-        self.sa3 = PointNetSetAbstraction(None, None, None, 640 + 3, [256, 512, 1024], True)
-        
-        # TÊTE DE RÉGRESSION (1025 car 1024 features + 1 scale)
-        self.fc1 = nn.Linear(1025, 512)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.drop1 = nn.Dropout(0.4)
-        
-        self.fc2 = nn.Linear(512, 256)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.drop2 = nn.Dropout(0.5)
-        
-        self.fc3 = nn.Linear(256, 1) 
-
-    # CORRECTION : Ajout de scale_factor dans les arguments
     def forward(self, xyz, scale_factor=None):
         B, _, _ = xyz.shape
         if self.normal_channel:
@@ -79,23 +76,24 @@ class get_model(nn.Module):
         else:
             norm = None
 
+        # Descente dans l'architecture PointNet++
         l1_xyz, l1_points = self.sa1(xyz, norm)
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
         
-        x = l3_points.view(B, 1024)
+        # Redimensionnement dynamique basé sur les caractéristiques extraites de SA3
+        x = l3_points.view(B, -1)
         
-        # --- INJECTION DU FACTEUR D'ÉCHELLE ---
+        # --- INJECTION DU FACTEUR D'ÉCHELLE (SCALE) ---
         if scale_factor is not None:
             scale_factor = scale_factor.view(B, 1)
             x = torch.cat([x, scale_factor], dim=1)
         else:
-            # Sécurité au cas où scale_factor n'est pas passé (remplissage par des zéros)
-            # Mais avec ton nouveau train.py, on passera toujours le scale.
             device = x.device
             extra = torch.zeros((B, 1)).to(device)
             x = torch.cat([x, extra], dim=1)
         
+        # Passage dans les blocs Fully Connected
         x = self.drop1(F.relu(self.bn1(self.fc1(x))))
         x = self.drop2(F.relu(self.bn2(self.fc2(x))))
         

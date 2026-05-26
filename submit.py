@@ -31,14 +31,19 @@ with open(args.config, 'r') as f:
 for param, val in args.parameters:
     set_parameter_value(cfg, param, val)
 
-# Créer dossier de Job dans un dossier 'Jobs' au même niveau
 job_root = join(script_dir, "Jobs")
 os.makedirs(job_root, exist_ok=True)
 job_id = len(os.listdir(job_root)) + 1
 job_path = join(job_root, str(job_id))
 os.makedirs(job_path, exist_ok=True)
 
-with open(join(job_path, "config.yaml"), 'w') as f:
+# FORCE LE LOG_DIR : On surcharge le log_dir du YAML pour qu'il cible le dossier du Job en cours
+if 'train' in cfg:
+    cfg['train']['log_dir'] = job_path
+
+# Sauvegarde du fichier config spécifique à ce job
+generated_config_path = join(job_path, "config.yaml")
+with open(generated_config_path, 'w') as f:
     yaml.dump(cfg, f)
 
 # Fichier Slurm
@@ -60,18 +65,11 @@ with open(slurm_script, 'w') as f:
     f.write(f"#SBATCH --output={join(job_path, 'log.out')}\n")
     f.write(f"#SBATCH --error={join(job_path, 'log.out')}\n\n")
     
-    # Commande Apptainer
-    # On monte le dossier courant dans le conteneur et on lance l'entraînement
+    # On passe uniquement le chemin vers le fichier config.yaml généré pour ce Job particulier
     cmd = (
-        f"apptainer exec --nv {container_image} python {join(script_dir, 'train_regression_random.py')} "
-        f"--model {cfg['model']['name']} "
-        f"--batch_size {cfg['training']['batch_size']} "
-        f"--epoch {cfg['training']['epoch']} "
-        f"--learning_rate {cfg['training']['learning_rate']} "
-        f"--num_point {cfg['model']['num_point']} "
-        f"--log_dir {job_path} "
+        f"apptainer exec --nv {container_image} python {join(script_dir, 'train.py')} "
+        f"--config {generated_config_path}"
     )
-    if cfg['training'].get('process_data', False): cmd += "--process_data "
     
     f.write(f"cd {script_dir}\n")
     f.write(cmd + "\n")

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Listes des paramètres à tester
-LRS=(0.001 0.0001 )
+LRS=(0.001 0.0001)
 BSS=(64 128 256)
 NPTS=(2048 4096)
 
@@ -14,15 +14,21 @@ for lr in "${LRS[@]}"; do
             
             LOG_NAME="LR${lr}_BS${bs}_NP${np}"
             
-            # On construit la commande dans une variable
-            CMD="python submit.py -c config.yaml -p learning_rate $lr -p batch_size $bs -p num_point $np -p epoch 300 -g"
+            # Définition des arguments pour submit.py
+            # On passe les paramètres un par un pour que Bash gère correctement les espaces
+            ARGS=(-c config.yaml -p learning_rate "$lr" -p batch_size "$bs" -p num_point "$np" -p epoch 300)
+            
+            # Si ce n'est pas une simulation, on ajoute le flag de soumission effective (-g ou --go)
+            if [ "$SIMULATION" = false ] ; then
+                ARGS+=("-g")
+            fi
 
             if [ "$SIMULATION" = true ] ; then
-                echo "[SIMULATION] $CMD"
+                echo "[SIMULATION] python submit.py ${ARGS[*]}"
             else
-                echo "[EXECUTION] Lancement de $LOG_NAME..."
-                $CMD  
-                sleep 1
+                echo "[EXECUTION] Lancement de $LOG_NAME via submit.py..."
+                python submit.py "${ARGS[@]}"
+                sleep 1 # Pause de sécurité entre chaque soumission Slurm
             fi
 
         done
