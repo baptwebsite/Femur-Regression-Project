@@ -23,15 +23,20 @@ def parse_results(file_path):
                 res['LR'] = line.split(':')[-1].split('|')[0].strip()
             
             if 'Batch Size' in line:
-                # Gère la ligne : "Batch Size : 64 | Epochs : 10"
                 parts = line.split('|')
                 res['BS'] = parts[0].split(':')[-1].strip()
                 for p in parts:
                     if 'Epochs' in p:
                         res['Epochs'] = p.split(':')[-1].strip()
 
-            if 'Points' in line:
+            if 'Points demandés' in line or 'Points' in line:
                 res['Points'] = line.split(':')[-1].strip()
+                
+            if "Méthode d'échantillonnage" in line:
+                res['Sampling'] = line.split(':')[-1].strip().upper()
+                
+            if "Utilisation Augmentation" in line:
+                res['Augment'] = line.split(':')[-1].strip()
             
             # Cas de secours si Epochs est sur sa propre ligne
             if 'Epochs :' in line and 'Epochs' not in res:
@@ -45,18 +50,18 @@ def parse_results(file_path):
             # Gestion flexible du nom pour le Test MAE
             if 'Final Test MAE' in line:
                 test_str = line.split(':')[-1].replace('cm', '').strip()
-                # On nettoie les éventuels textes entre parenthèses restants
                 test_str = test_str.split('(')[0].strip()
                 try:
                     res['Test_MAE'] = float(test_str)
                 except ValueError:
                     continue
                 
-    return res if 'Test_MAE' in res or 'Val_MAE' in res else None
+    return res if ('Test_MAE' in res or 'Val_MAE' in res) else None
 
 def main():
     parser = argparse.ArgumentParser(description='Leaderboard interactif pour Jobs/')
-    parser.add_argument('-s', '--sort', default='Test_MAE', help='Champ pour trier (ID, Val_MAE, Test_MAE, BS, LR, Epochs)')
+    parser.add_argument('-s', '--sort', default='Test_MAE', 
+                        help='Champ pour trier (ID, Val_MAE, Test_MAE, BS, LR, Epochs, Sampling, Augment)')
     parser.add_argument('-r', '--reverse', action='store_true', help='Inverser l\'ordre du tri')
     parser.add_argument('-csv', action='store_true', help='Exporter en csv')
     args = parser.parse_args()
@@ -79,31 +84,39 @@ def main():
             all_results.append(data)
 
     if not all_results:
-        print("Aucun résultat exploitable trouvé.")
+        print("Aucun résultat exploitable trouvé (fichiers parameters_results.txt absents ou vides).")
         return
 
     df = pd.DataFrame(all_results)
     
-    # --- RÉORGANISATION ET AFFICHAGE DES ÉPOQUES ---
-    # On définit l'ordre souhaité des colonnes
-    desired_cols = ['ID', 'LR', 'BS', 'Epochs', 'Points', 'Val_MAE', 'Test_MAE']
-    # On ne garde que celles qui ont été trouvées dans les fichiers
+    # --- RÉORGANISATION ET NETTOYAGE DES TYPES ---
+    desired_cols = ['ID', 'LR', 'BS', 'Epochs', 'Points', 'Sampling', 'Augment', 'Val_MAE', 'Test_MAE']
     cols = [c for c in desired_cols if c in df.columns]
     df = df[cols]
 
-    # Gestion du tri
+    # SÉCURITÉ TABULATE : Forcer les colonnes catégoriels/textuels en string pure
+    # pour empêcher tabulate de vouloir les convertir en float.
+    if 'Augment' in df.columns:
+        df['Augment'] = df['Augment'].astype(str)
+    if 'Sampling' in df.columns:
+        df['Sampling'] = df['Sampling'].astype(str)
+
+    # Gestion du tri (plus robuste avec les alias)
     sort_column = args.sort
-    mapping = {'id': 'ID', 'mae': 'Test_MAE', 'val': 'Val_MAE', 'lr': 'LR', 'bs': 'BS', 'ep': 'Epochs'}
+    mapping = {
+        'id': 'ID', 'mae': 'Test_MAE', 'test': 'Test_MAE', 'val': 'Val_MAE', 
+        'lr': 'LR', 'bs': 'BS', 'ep': 'Epochs', 'samp': 'Sampling', 'aug': 'Augment'
+    }
     sort_column = mapping.get(sort_column.lower(), sort_column)
 
     if sort_column in df.columns:
-        # Tri croissant par défaut (MAE le plus bas en premier)
-        df = df.sort_values(by=sort_column, ascending=not args.reverse)
+        is_metric = 'MAE' in sort_column
+        df = df.sort_values(by=sort_column, ascending=is_metric if not args.reverse else not is_metric)
 
-    # Affichage
-    print("\n" + "="*95)
+    # Affichage de la table
+    print("\n" + "="*110)
     print(f"LEADERBOARD RÉGRESSION FÉMUR (Trié par {sort_column})")
-    print("="*95)
+    print("="*110)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
     
     if args.csv:
