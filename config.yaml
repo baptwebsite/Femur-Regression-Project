@@ -3,14 +3,14 @@ train:
   batch_size: 16
   epoch: 200
   learning_rate: 0.001
-  optimizer: "Adam" # Adam ou SGD
+  optimizer: "Adam" 
   log_dir: "pointnet2_femur_exp"
   
 dataset:
   root: "data"
   num_point: 2048
   sampling_method: "random" # 'random' ou 'fps'
-  augment: true             # true pour inclure les _aug, false sinon
+  augment: true             # true pour inclure les données augmentées, false sinon
 
 model:
   normal_channel: false

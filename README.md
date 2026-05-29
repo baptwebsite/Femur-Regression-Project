@@ -20,20 +20,43 @@ Le projet utilise une architecture unifiée par fichier de configuration. Chaque
 
 #### 2.1 Configuration du modèle
 
-##### 1. La Sélection des Points (`sampling_method`)
+**config.yaml** :
 
-* **Aléatoire (`"random"`)** : Sélection purement au hasard à chaque époque. 
-* **Farthest Point Sampling (`"fps"`)** : Sélection des points les plus éloignés les uns des autres.
+```bash
+train:
+  gpu: "0"
+  batch_size: 16            
+  epoch: 200
+  learning_rate: 0.001
+  optimizer: "Adam" 
+  log_dir: "pointnet2_femur_exp"
+  
+dataset:
+  root: "data"
+  num_point: 2048           # si égal à 6000, tout les points du maillage sont sélectionnés
+  sampling_method: "random" # 'random' ou 'fps'
+  augment: true             # true pour inclure les données augmentées, false sinon
 
-##### 2. L'Augmentation de Données (`augment`)
-
-* **`false`** : Le modèle n'apprend que sur les fémurs d'origine.
-* **`true`** : Le modèle intègre également les variantes géométriques modifiées (`_aug`). Dans le dataset, il existe **3 versions augmentées** pour chaque fémur de base.
-
-##### 3. Le Nombre de Points (`num_point`)
-
-* **Résolution personnalisable** : Ajuste le niveau de détail (ex: 512, 1024, 2048, 4096).
-* **Cas particulier** : Si `num_point = 6000`, la totalité des points disponibles du fémur est sélectionnée.
+model:                      # configuration de PointNet++, par défaut ce sont les meilleurs pramètres ici
+  normal_channel: false
+  sa1:
+    npoint: 512
+    radii: [0.05, 0.1, 0.2]
+    nsample: [16, 32, 64]
+    mlp: [[32, 32, 64], [64, 64, 128], [64, 96, 128]]
+  sa2:
+    npoint: 128
+    radii: [0.2, 0.4, 0.8]
+    nsample: [32, 64, 128]
+    mlp: [[64, 64, 128], [128, 128, 256], [128, 128, 256]]
+  sa3:
+    mlp: [256, 512, 1024]
+  regression_head:
+    fc1_units: 512
+    dropout_1: 0.4
+    fc2_units: 256
+    dropout_2: 0.5
+```
 
 #### 2.2 Lancer un Job :
 
@@ -54,9 +77,10 @@ python submit.py -c config.yaml -p sampling_method fps -p augment true -g
 
 #### 2.3 Lancer plusieurs Jobs :
 
-L'idée est de pouvoir modifier le *learning_rate*, le *batch_size* et le *nombre de points* (num_point) de la config automatiquement plutôt que de lancer les jobs "à la main" de manière redondante. Cela permet d'effectuer une recherche par grille (Grid Search) efficace.
+L'idée est de pouvoir modifier le *learning_rate*, le *batch_size* et le *nombre de points* (num_point) de la config automatiquement plutôt que de lancer les jobs "à la main" de manière redondante. 
 
-*Note : Pour configurer la méthode de sampling ou l'ajout des données augmentées sur l'ensemble de la campagne, il faut le faire manuellement en modifiant le fichier racine config.yaml avant de lancer le lot.*
+*Note : Pour configurer la méthode de sampling ou l'ajout des données augmentées, il faut le faire manuellement en modifiant le fichier racine config.yaml avant de lancer le lot.*
+
 
 Modifier les listes de paramètres à croiser directement dans le script **training_batch.sh** :
 ```bash

@@ -9,7 +9,22 @@ def set_parameter_value(cfg, param_name, value):
     for section in cfg:
         if isinstance(cfg[section], dict) and param_name in cfg[section]:
             orig_type = type(cfg[section][param_name])
-            cfg[section][param_name] = orig_type(value)
+            
+            # Si le paramètre attendu dans le YAML est un booléen (True/False)
+            if orig_type is bool:
+                # On convertit en minuscules pour accepter 'true', 'True', 'false', 'False'
+                val_lower = str(value).lower()
+                if val_lower == 'true':
+                    cfg[section][param_name] = True
+                elif val_lower == 'false':
+                    cfg[section][param_name] = False
+                else:
+                    # Optionnel : si la valeur n'est ni true ni false, on tente une conversion brute
+                    cfg[section][param_name] = bool(value)
+            else:
+                # Pour les autres types (int, float, str), on garde le comportement classique
+                cfg[section][param_name] = orig_type(value)
+                
             return True
     return False
 
