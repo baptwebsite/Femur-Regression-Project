@@ -10,6 +10,10 @@ def parse_results(file_path):
     if not os.path.exists(file_path):
         return None
     
+    # Valeurs par défaut pour les anciens jobs qui n'avaient pas ces paramètres
+    res['Sampling'] = 'N/A'
+    res['Augment'] = 'N/A'
+    
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
         lines = content.split('\n')
@@ -89,19 +93,17 @@ def main():
 
     df = pd.DataFrame(all_results)
     
-    # --- RÉORGANISATION ET NETTOYAGE DES TYPES ---
+    # --- RÉORGANISATION ET TRI ---
     desired_cols = ['ID', 'LR', 'BS', 'Epochs', 'Points', 'Sampling', 'Augment', 'Val_MAE', 'Test_MAE']
     cols = [c for c in desired_cols if c in df.columns]
     df = df[cols]
 
-    # SÉCURITÉ TABULATE : Forcer les colonnes catégoriels/textuels en string pure
-    # pour empêcher tabulate de vouloir les convertir en float.
-    if 'Augment' in df.columns:
-        df['Augment'] = df['Augment'].astype(str)
-    if 'Sampling' in df.columns:
-        df['Sampling'] = df['Sampling'].astype(str)
+    # Remplacement des valeurs vides résiduelles (au cas où) par une chaîne de caractères
+    df = df.fillna('N/A')
+    df['Augment'] = df['Augment'].astype(str)
+    df['Sampling'] = df['Sampling'].astype(str)
 
-    # Gestion du tri (plus robuste avec les alias)
+    # Gestion du tri
     sort_column = args.sort
     mapping = {
         'id': 'ID', 'mae': 'Test_MAE', 'test': 'Test_MAE', 'val': 'Val_MAE', 
