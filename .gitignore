@@ -1,6 +1,7 @@
 # Modèles et fichiers lourds
 *.pth
 *.sif
+data/
 
 # Python
 __pycache__/
