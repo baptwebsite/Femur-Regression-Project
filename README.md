@@ -2,6 +2,23 @@
 
 Ce guide centralise les instructions nécessaires pour se connecter au cluster, configurer, lancer et analyser les entraînements de modèles PointNet++.
 
+### Environnement 
+
+Toutes les dépendances nécessaires sont dans le fichier **requirements.txt**
+
+```bash
+python -m venv .pointnet_env
+```
+
+
+```bash
+.pointnet_env/Scripts/Activate.ps1
+```
+
+
+```bash
+pip install -r requirements.txt
+```
 ### 1. Se connecter à Mesonet
 
 ```bash

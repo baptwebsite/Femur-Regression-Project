@@ -7,5 +7,7 @@ data/
 __pycache__/
 *.pyc
 
-
+# Stats
+stats.py
+stats_bis.py
 
