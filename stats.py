@@ -26,7 +26,7 @@ def main():
     
     unique_root_ids = sorted(list(groups.keys()))
 
-    # 3. Filtrer pour ne garder que les vrais fémurs de base (sans aucune augmentation _aug)
+    # 3. Filtrer pour ne garder que les vrais fémurs de base (sans aucune augmentation ACVD _aug)
     all_real_meshes = [
         entry for rid in unique_root_ids 
         for entry in groups[rid] 
@@ -34,26 +34,29 @@ def main():
     ]
 
     print(f"==========================================")
-    print(f"===    STATS ON THE ENTIRE DATASET     ===")
+    print(f"===     STATS ON THE ENTIRE DATASET      ===")
     print(f"===          (Non-augmented)           ===")
     print(f"==========================================")
     print(f"Total number of unique patients: {len(unique_root_ids)}")
     print(f"Total number of real meshes    : {len(all_real_meshes)}\n")
 
-    # 4. Extraction des tailles et du genre (avec labels anglais)
-    true_sizes = []
+    # 4. Extraction des tailles par Genre
+    male_sizes = []
+    female_sizes = []
     gender_counts = defaultdict(int)
     gender_key = "PatientSex"
 
     for item in all_real_meshes:
-        true_sizes.append(item['PatientSize'])
-        
+        size = item['PatientSize']
         gender_val = str(item[gender_key]).strip().upper()
-        # Standardisation vers labels anglais (Males / Females)
+        
+        # Standardisation vers labels anglais et tri des tailles
         if gender_val in ["M", "H", "MALE", "HOMME"]:
             gender_counts['Males (M)'] += 1
+            male_sizes.append(size)
         elif gender_val in ["F", "FEMALE", "FEMME"]:
-            gender_counts['Femmes (F)'] += 1
+            gender_counts['Females (F)'] += 1
+            female_sizes.append(size)
         else:
             gender_counts[f'Other ({gender_val})'] += 1
 
@@ -65,47 +68,44 @@ def main():
     for i in range(len(bins) - 1):
         intervals.append(f"{bins[i]:.2f}m - {bins[i+1]:.2f}m")
     
-    # Initialisation des compteurs ordonnés pour le graphique
-    counts_dict = {interv: 0 for interv in intervals}
-    counts_dict["< 1.45m"] = 0
-    counts_dict[">= 2.00m"] = 0
+    # Initialisation des compteurs ordonnés par genre
+    counts_males = {interv: 0 for interv in intervals}
+    counts_females = {interv: 0 for interv in intervals}
     
-    for size in true_sizes:
-        found = False
+    # Remplissage pour les Hommes
+    for size in male_sizes:
         for i in range(len(bins) - 1):
-            low = bins[i]
-            high = bins[i+1]
-            if low <= size < high:
-                counts_dict[f"{low:.2f}m - {high:.2f}m"] += 1
-                found = True
+            if bins[i] <= size < bins[i+1]:
+                counts_males[f"{bins[i]:.2f}m - {bins[i+1]:.2f}m"] += 1
                 break
-        if not found:
-            if size < bins[0]:
-                counts_dict["< 1.45m"] += 1
-            elif size >= bins[-1]:
-                counts_dict[">= 2.00m"] += 0
+
+    # Remplissage pour les Femmes
+    for size in female_sizes:
+        for i in range(len(bins) - 1):
+            if bins[i] <= size < bins[i+1]:
+                counts_females[f"{bins[i]:.2f}m - {bins[i+1]:.2f}m"] += 1
+                break
 
     # 6. Affichage Textuel de contrôle (Terminal)
     print("Gender Distribution:")
     print("-" * 40)
-    for gender, count in gender_counts.items():
-        percentage = (count / len(all_real_meshes)) * 100 if all_real_meshes else 0
-        print(f"  {gender:<20} : {count:>3} femur(s) ({percentage:.1f}%)")
+    # Assurer l'affichage ordonné : Hommes puis Femmes
+    for g_key in ['Males (M)', 'Females (F)']:
+        if g_key in gender_counts:
+            count = gender_counts[g_key]
+            percentage = (count / len(all_real_meshes)) * 100 if all_real_meshes else 0
+            print(f"  {g_key:<20} : {count:>3} femur(s) ({percentage:.1f}%)")
     print()
 
-    print("Height Distribution:")
-    print("-" * 40)
-    if counts_dict["< 1.45m"] > 0:
-        print(f"          < 1.45m : {counts_dict['< 1.45m']} femur(s)")
+    print("Height Distribution (Males vs Females):")
+    print("-" * 55)
     for interv in intervals:
-        print(f"  Between {interv} : {counts_dict[interv]} femur(s)")
-    if counts_dict[">= 2.00m"] > 0:
-        print(f"         >= 2.00m : {counts_dict['>= 2.00m']} femur(s)")
-    print("-" * 40)
-    print(f"Total verified: {sum(counts_dict.values())} femurs.\n")
+        print(f"  {interv:<15} | Males: {counts_males[interv]:>2} | Females: {counts_females[interv]:>2}")
+    print("-" * 55)
+    print(f"Total verified: {len(male_sizes) + len(female_sizes)} femurs.\n")
 
     # ==========================================================
-    # 7. GENERATION DES GRAPHIQUES TRADUITS
+    # 7. GENERATION DES GRAPHIQUES
     # ==========================================================
     print("-> Generating charts...")
     
@@ -114,15 +114,14 @@ def main():
 
     # --- CHART 1 : Gender Distribution (Pie Chart) ---
     plt.figure(figsize=(6, 6))
-    labels = ["Females (F)", "Males (M)"]
-    sizes = list(gender_counts.values())
+    # Correction de l'ordre pour matcher avec l'ordre des couleurs (Bleu = Homme, Rose = Femme)
+    labels = ["Males (M)", "Females (F)"]
+    sizes = [gender_counts['Males (M)'], gender_counts['Females (F)']]
     
-    # COULEURS CLAIRES : Bleu ciel (#5dade2), Rouge/Rose corail (#f1948a), Gris (#bdc3c7)
-    colors = ['#5dade2', '#f1948a', '#bdc3c7'] 
+    colors = ['#5dade2', '#f1948a'] 
     
     plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, 
-            colors=colors[:len(labels)], wedgeprops={'edgecolor': 'white', 'linewidth': 2})
-    # plt.title("Gender Distribution in the Global Dataset", fontsize=14, fontweight='bold', pad=20)
+            colors=colors, wedgeprops={'edgecolor': 'white', 'linewidth': 2})
     plt.tight_layout()
     
     plot_gender_path = "gender_distribution.png"
@@ -130,39 +129,48 @@ def main():
     print(f"   [OK] Gender chart saved to: {plot_gender_path}")
     plt.close()
 
-    # --- CHART 2 : Height Distribution (Bar Chart) ---
-    plt.figure(figsize=(10, 6))
+    # --- CHART 2 : Height Distribution (Grouped Bar Chart) ---
+    plt.figure(figsize=(12, 6))
     
-    # Ordonner les données chronologiquement de gauche à droite
-    ordered_labels = []
-    if counts_dict["< 1.45m"] > 0: ordered_labels.append("< 1.45m")
-    ordered_labels.extend(intervals)
-    if counts_dict[">= 2.00m"] > 0: ordered_labels.append(">= 2.00m")
+    x = np.arange(len(intervals))  # Emplacement des groupes sur l'axe X
+    width = 0.35  # Largeur des barres
     
-    ordered_values = [counts_dict[lbl] for lbl in ordered_labels]
+    male_values = [counts_males[interv] for interv in intervals]
+    female_values = [counts_females[interv] for interv in intervals]
     
-    # COULEUR DES BARRES : Bleu clair (#85c1e9)
-    bars = plt.bar(ordered_labels, ordered_values, color='#85c1e9', edgecolor='#5499c7', alpha=0.9, width=0.6)
+    # Génération des deux barres côte à côte par intervalle
+    bars_m = plt.bar(x - width/2, male_values, width, label='Males (M)', color='#5dade2', edgecolor='#2980b9', alpha=0.9)
+    bars_f = plt.bar(x + width/2, female_values, width, label='Females (F)', color='#f1948a', edgecolor='#c0392b', alpha=0.9)
     
-    # Ajouter les totaux au-dessus de chaque barre
-    for bar in bars:
+    # Ajouter les totaux au-dessus de chaque barre (Hommes)
+    for bar in bars_m:
         yval = bar.get_height()
         if yval > 0:
-            plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.5, str(yval), ha='center', va='bottom', fontweight='bold', color='#2c3e50')
+            plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.3, str(yval), ha='center', va='bottom', fontsize=9, fontweight='bold', color='#2c3e50')
 
-    # plt.title("Frequency Distribution of Patient Heights", fontsize=14, fontweight='bold', pad=15)
+    # Ajouter les totaux au-dessus de chaque barre (Femmes)
+    for bar in bars_f:
+        yval = bar.get_height()
+        if yval > 0:
+            plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.3, str(yval), ha='center', va='bottom', fontsize=9, fontweight='bold', color='#2c3e50')
+
+    # Ajustements graphiques
     plt.xlabel("Stature Intervals (m)", fontsize=12, labelpad=10)
     plt.ylabel("Number of Femurs", fontsize=12, labelpad=10)
-    plt.xticks(rotation=25, ha='right')
-    plt.ylim(0, max(ordered_values) + (max(ordered_values) * 0.15))
+    plt.xticks(x, intervals, rotation=25, ha='right')
+    
+    max_val = max(max(male_values), max(female_values))
+    plt.ylim(0, max_val + max_val * 0.15)
+    
+    plt.legend(fontsize=11, loc='upper right')
     plt.tight_layout()
     
-    plot_sizes_path = "height_distribution.png"
+    plot_sizes_path = "height_distribution_by_gender.png"
     plt.savefig(plot_sizes_path, dpi=300)
-    print(f"   [OK] Height chart saved to: {plot_sizes_path}")
+    print(f"   [OK] Height by gender chart saved to: {plot_sizes_path}")
     plt.close()
     
-    print("\nAll charts have been translated to English and successfully saved!")
+    print("\nAll charts have been customized and successfully saved!")
 
 if __name__ == "__main__":
     main()

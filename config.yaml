@@ -1,14 +1,14 @@
 train:
   gpu: "0"
-  batch_size: 16
-  epoch: 200
-  learning_rate: 0.001
+  batch_size: 64
+  epoch: 500
+  learning_rate: 0.01
   optimizer: "Adam" 
   log_dir: "pointnet2_femur_exp"
   
 dataset:
   root: "data"
-  num_point: 2048
+  num_point: 6000           # 6000 = tout les points du maillage
   sampling_method: "random" # 'random' ou 'fps'
   augment: true             # true pour inclure les données augmentées, false sinon
 
