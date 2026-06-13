@@ -76,7 +76,7 @@ with open(slurm_script, 'w') as f:
     f.write("#SBATCH --nodes=1\n")
     f.write("#SBATCH --cpus-per-task=8\n")
     f.write("#SBATCH --mem=16G\n")
-    f.write("#SBATCH --time=48:00:00\n") 
+    f.write("#SBATCH --time=80:00:00\n") 
     f.write(f"#SBATCH --output={join(job_path, 'log.out')}\n")
     f.write(f"#SBATCH --error={join(job_path, 'log.out')}\n\n")
     
